@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    :root { --brand:#673ab7; --bg:#f4f1fa; --card:#fff; --text:#202124; --muted:#5f6368; --line:#e0dced; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: "Segoe UI", Roboto, Arial, sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 60px; }
+    .hero { background:var(--brand); color:#fff; border-radius:12px; padding:24px; margin-bottom:20px; }
+    .hero h1 { margin:0 0 6px; font-size:24px; }
+    .hero p { margin:0; opacity:.9; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:20px; }
+    label { font-weight:600; display:block; margin-bottom:8px; }
+    textarea { width:100%; min-height:170px; padding:12px; font:inherit; border:1px solid var(--line); border-radius:8px; resize:vertical; }
+    textarea:focus { outline:2px solid var(--brand); border-color:transparent; }
+    .samples { margin:10px 0 16px; font-size:14px; color:var(--muted); }
+    .samples button { background:none; border:1px solid var(--line); border-radius:16px; padding:4px 10px; margin:4px 4px 0 0; cursor:pointer; color:var(--brand); font:inherit; }
+    .go { background:var(--brand); color:#fff; border:0; border-radius:8px; padding:12px 22px; font-size:16px; font-weight:600; cursor:pointer; }
+    .go:disabled { opacity:.6; cursor:wait; }
+    .status { margin-top:14px; color:var(--muted); }
+    .error { color:#c5221f; }
+    .links a { display:inline-block; margin:6px 10px 6px 0; padding:10px 16px; border-radius:8px; text-decoration:none; font-weight:600; }
+    .primary { background:var(--brand); color:#fff; }
+    .secondary { border:1px solid var(--brand); color:var(--brand); }
+    .section { margin-top:16px; }
+    .section h3 { margin:0 0 6px; font-size:16px; }
+    .section li { margin:4px 0; }
+    .tag { font-size:11px; background:var(--bg); color:var(--brand); border-radius:4px; padding:1px 6px; margin-left:6px; }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1>AI Event Feedback Form Generator</h1>
+      <p>Describe your event. AI designs the right questions and builds a Google Form for you.</p>
+    </div>
+
+    <div class="card">
+      <label for="desc">Event description</label>
+      <textarea id="desc" placeholder="What was the event for? What sessions or activities happened? Which tools, technologies, venue or platform were used?"></textarea>
+      <div class="samples">Try a sample:
+        <button onclick="fill(0)">Tech workshop</button>
+        <button onclick="fill(1)">Hackathon</button>
+        <button onclick="fill(2)">Cultural fest</button>
+      </div>
+      <button class="go" id="go" onclick="generate()">Generate feedback form</button>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="card hidden" id="result">
+      <h2 id="rTitle" style="margin-top:0"></h2>
+      <div id="rMeta" style="color:var(--muted)"></div>
+      <div class="links">
+        <a id="formLink" class="primary" target="_blank">Open form (share this)</a>
+        <a id="editLink" class="secondary" target="_blank">Edit form</a>
+      </div>
+      <div id="rSections"></div>
+    </div>
+  </div>
+
+  <script>
+    const SAMPLES = [
+      'TechSpark 2026 is a one-day hands-on workshop for second-year CSE students on building web apps with React and Firebase. Sessions: a morning talk on modern web development, a live coding lab where students build a to-do app in VS Code, a Firebase authentication demo, and a 1-hour mini hackathon with prizes. Held in Lab 3 with a projector and campus Wi-Fi.',
+      'CodeStorm is a 24-hour inter-college hackathon on AI for healthcare with 40 teams. It included an opening keynote, mentor check-ins every 6 hours, free cloud credits on Google Cloud, a Discord server for announcements, overnight food, and final pitching to a jury of 4 judges.',
+      'Rhythm 2026 is our college cultural fest over two days with a solo dance competition, battle of bands, a fashion show, food stalls and a DJ night. Registration was done through an online portal and passes were scanned with QR codes at the gate.'
+    ];
+
+    function fill(i) { document.getElementById('desc').value = SAMPLES[i]; }
+
+    function generate() {
+      const text = document.getElementById('desc').value.trim();
+      const status = document.getElementById('status');
+      if (text.length < 15) {
+        status.className = 'status error';
+        status.textContent = 'Please describe the event in a bit more detail.';
+        return;
+      }
+      document.getElementById('go').disabled = true;
+      document.getElementById('result').classList.add('hidden');
+      status.className = 'status';
+      status.textContent = 'AI is analysing the event and building your form... (about 10-20 seconds)';
+
+      google.script.run
+        .withSuccessHandler(showResult)
+        .withFailureHandler(function (err) {
+          document.getElementById('go').disabled = false;
+          status.className = 'status error';
+          status.textContent = 'Error: ' + (err && err.message ? err.message : err);
+        })
+        .generateFeedbackForm(text);
+    }
+
+    function showResult(r) {
+      document.getElementById('go').disabled = false;
+      document.getElementById('status').textContent = 'Done!';
+      document.getElementById('rTitle').textContent = r.title;
+      document.getElementById('rMeta').textContent =
+        (r.eventType ? r.eventType + ' · ' : '') + r.questionCount + ' questions in ' + r.sections.length + ' sections';
+      document.getElementById('formLink').href = r.formUrl;
+      document.getElementById('editLink').href = r.editUrl;
+
+      const box = document.getElementById('rSections');
+      box.innerHTML = '';
+      r.sections.forEach(function (s) {
+        const div = document.createElement('div');
+        div.className = 'section';
+        const h = document.createElement('h3');
+        h.textContent = s.title;
+        const ul = document.createElement('ul');
+        s.questions.forEach(function (q) {
+          const li = document.createElement('li');
+          li.textContent = q.title;
+          const tag = document.createElement('span');
+          tag.className = 'tag';
+          tag.textContent = q.type.replace('_', ' ').toLowerCase();
+          li.appendChild(tag);
+          ul.appendChild(li);
+        });
+        div.appendChild(h);
+        div.appendChild(ul);
+        box.appendChild(div);
+      });
+      document.getElementById('result').classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
